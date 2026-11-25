@@ -50,11 +50,27 @@ Future<bool> biometricGate() async {
   }
 }
 
-/// URL de base de l'API Node.
+/// URL de base de l'API Node (modifiable dans l'app via l'icône réglages).
 /// - Web / desktop : http://127.0.0.1:3000
 /// - Émulateur Android : http://10.0.2.2:3000
 /// - Téléphone réel : http://<IP-de-ton-PC>:3000
-const String apiBaseUrl = 'http://127.0.0.1:3000';
+String apiBaseUrl = 'http://2.29.223.119:3000';
+
+/// Charge / enregistre l'adresse du serveur (persistée sur l'appareil).
+class ServerConfig {
+  static const _k = 'api_base_url';
+  static Future<void> load() async {
+    final p = await SharedPreferences.getInstance();
+    final v = p.getString(_k);
+    if (v != null && v.isNotEmpty) apiBaseUrl = v;
+  }
+
+  static Future<void> save(String url) async {
+    apiBaseUrl = url.trim();
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_k, apiBaseUrl);
+  }
+}
 
 // Couleurs façon Meta / Facebook
 const metaBlue = Color(0xFF1877F2);
