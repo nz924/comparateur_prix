@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "255574545954",
+    "firebase_url": "https://opt1-446e5-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "opt1-446e5",
+    "storage_bucket": "opt1-446e5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:255574545954:android:4ec6f3691fb0ca17e7dc7b",
+        "android_client_info": {
+          "package_name": "com.example.comparateur_prix"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAG_R3gINS7GSk0dfakecRRWttJO5vcXa0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
