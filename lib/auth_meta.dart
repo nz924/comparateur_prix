@@ -1,6 +1,53 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:local_auth/local_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Mémorise la dernière session connectée, pour la reconnexion par Face ID.
+class Session {
+  static const _kNom = 'session_nom';
+  static const _kToken = 'session_token';
+
+  static Future<void> save(String nom, String token) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kNom, nom);
+    await p.setString(_kToken, token);
+  }
+
+  static Future<String?> savedNom() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getString(_kNom);
+  }
+
+  static Future<void> clear() async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove(_kNom);
+    await p.remove(_kToken);
+  }
+}
+
+/// Authentification biométrique (Face ID / empreinte) sur téléphone.
+/// Renvoie true si l'accès est autorisé.
+/// - Sur le web ou si aucune biométrie n'est disponible : on laisse passer (pas de blocage).
+/// - Sur téléphone avec biométrie : exige Face ID / empreinte.
+Future<bool> biometricGate() async {
+  if (kIsWeb) return true; // pas de biométrie sur le web
+  final auth = LocalAuthentication();
+  try {
+    final supported = await auth.isDeviceSupported();
+    final canCheck = await auth.canCheckBiometrics;
+    if (!supported || !canCheck) return true; // appareil sans biométrie -> on n'empêche pas
+    return await auth.authenticate(
+      localizedReason: 'Confirmez votre identité pour accéder à l\'app',
+      biometricOnly: true,
+      persistAcrossBackgrounding: true,
+    );
+  } catch (_) {
+    return true; // en cas d'erreur plateforme, ne pas bloquer
+  }
+}
 
 /// URL de base de l'API Node.
 /// - Web / desktop : http://127.0.0.1:3000
@@ -12,6 +59,7 @@ const String apiBaseUrl = 'http://127.0.0.1:3000';
 const metaBlue = Color(0xFF1877F2);
 const metaGreen = Color(0xFF42B72A);
 const metaBg = Color(0xFFF0F2F5);
+const metaMuted = Color(0xFF606770);
 
 class ApiService {
   static Future<Map<String, dynamic>> _post(String path, Map body) async {
@@ -85,6 +133,36 @@ class _LoginPageState extends State<LoginPage> {
   final _mdp = TextEditingController();
   bool _loading = false;
   String? _erreur;
+  String? _savedNom; // dernière session connue (pour Face ID)
+
+  @override
+  void initState() {
+    super.initState();
+    Session.savedNom().then((n) {
+      if (mounted) setState(() => _savedNom = n);
+    });
+  }
+
+  // Reconnexion rapide par Face ID / empreinte, sans retaper le mot de passe.
+  Future<void> _loginFaceId() async {
+    final nom = _savedNom;
+    if (nom == null) return;
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    final ok = await biometricGate();
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (ok) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => HomePage(nom: nom)),
+      );
+    } else {
+      setState(() => _erreur = 'Face ID / empreinte non reconnu.');
+    }
+  }
 
   Future<void> _valider() async {
     setState(() {
@@ -93,10 +171,17 @@ class _LoginPageState extends State<LoginPage> {
     });
     try {
       final r = await ApiService.login(_email.text.trim(), _mdp.text);
+      final nom = r['user']['nom'];
+      await Session.save(nom, r['token'] ?? '');
+      final okBio = await biometricGate();
       if (!mounted) return;
+      if (!okBio) {
+        setState(() => _erreur = 'Authentification biométrique annulée.');
+        return;
+      }
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => HomePage(nom: r['user']['nom'])),
+        MaterialPageRoute(builder: (_) => HomePage(nom: nom)),
       );
     } catch (e) {
       setState(() => _erreur = e.toString().replaceFirst('Exception: ', ''));
@@ -174,7 +259,27 @@ class _LoginPageState extends State<LoginPage> {
                                 fontSize: 17, fontWeight: FontWeight.bold)),
                   ),
                 ),
-                const SizedBox(height: 24),
+                if (!kIsWeb && _savedNom != null) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: metaBlue,
+                        side: const BorderSide(color: metaBlue),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: _loading ? null : _loginFaceId,
+                      icon: const Icon(Icons.fingerprint),
+                      label: Text('Face ID — continuer comme $_savedNom',
+                          style: const TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 16),
                 const Divider(),
                 const SizedBox(height: 16),
                 SizedBox(
@@ -229,10 +334,17 @@ class _RegisterPageState extends State<RegisterPage> {
     try {
       final r = await ApiService.register(
           _nom.text.trim(), _email.text.trim(), _mdp.text);
+      final nom = r['user']['nom'];
+      await Session.save(nom, r['token'] ?? '');
+      final okBio = await biometricGate();
       if (!mounted) return;
+      if (!okBio) {
+        setState(() => _erreur = 'Authentification biométrique annulée.');
+        return;
+      }
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => HomePage(nom: r['user']['nom'])),
+        MaterialPageRoute(builder: (_) => HomePage(nom: nom)),
       );
     } catch (e) {
       setState(() => _erreur = e.toString().replaceFirst('Exception: ', ''));
